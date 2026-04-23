@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Plus, Trash2, Loader2, Rocket, Crown, Shield, Star, Target, TrendingUp, Activity, Layers, Wallet, PieChart } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Trash2, Loader2, Rocket, Crown, Shield, Star, Target, TrendingUp, Activity, Layers, Wallet, PieChart, BarChart3, LineChart } from 'lucide-react';
 import { optimizePortfolio } from './api';
 
 function App() {
@@ -59,6 +59,369 @@ function App() {
 
   const totalReturn = assets.reduce((sum, a) => sum + a.ret, 0) / assets.length;
   const totalRisk = assets.reduce((sum, a) => sum + a.risk, 0) / assets.length;
+
+
+  // Компонент графика эффективной границы
+  const EfficientFrontierChart = ({ frontier, maxSharpe, minRisk }) => {
+    const canvasRef = useRef(null);
+    const containerRef = useRef(null);
+    
+    // Функция отрисовки графика
+    const drawChart = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container || !frontier || frontier.length === 0) return;
+      
+      // Получаем реальные размеры контейнера
+      const containerWidth = container.clientWidth;
+      const containerHeight = 280; // Фиксированная высота
+      
+      // Устанавливаем размеры canvas
+      canvas.width = containerWidth;
+      canvas.height = containerHeight;
+      
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      ctx.clearRect(0, 0, width, height);
+      
+      const risks = frontier.map(p => p.risk * 100);
+      const returns = frontier.map(p => p.returns * 100);
+      const minRiskVal = Math.min(...risks, 0);
+      const maxRiskVal = Math.max(...risks, (maxSharpe?.risk * 100) || 0, (minRisk?.risk * 100) || 0);
+      const minReturnVal = Math.min(...returns, 0);
+      const maxReturnVal = Math.max(...returns, (maxSharpe?.returns * 100) || 0, (minRisk?.returns * 100) || 0);
+      
+      // Адаптивные отступы в зависимости от ширины
+      const padding = { 
+        left: Math.max(35, width * 0.08), 
+        right: Math.max(15, width * 0.03), 
+        top: 20, 
+        bottom: 35 
+      };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+      
+      const toX = (risk) => padding.left + (risk - minRiskVal) / (maxRiskVal - minRiskVal) * chartWidth;
+      const toY = (ret) => padding.top + chartHeight - (ret - minReturnVal) / (maxReturnVal - minReturnVal) * chartHeight;
+      
+      // Сетка
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 0.5;
+      for (let i = 0; i <= 4; i++) {
+        const x = padding.left + (i / 4) * chartWidth;
+        ctx.beginPath();
+        ctx.moveTo(x, padding.top);
+        ctx.lineTo(x, padding.top + chartHeight);
+        ctx.stroke();
+        
+        const y = padding.top + (i / 4) * chartHeight;
+        ctx.beginPath();
+        ctx.moveTo(padding.left, y);
+        ctx.lineTo(padding.left + chartWidth, y);
+        ctx.stroke();
+      }
+      
+      // Оси
+      ctx.strokeStyle = '#9ca3af';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(padding.left, padding.top);
+      ctx.lineTo(padding.left, padding.top + chartHeight);
+      ctx.lineTo(padding.left + chartWidth, padding.top + chartHeight);
+      ctx.stroke();
+      
+      // Подписи осей
+      ctx.fillStyle = '#6b7280';
+      ctx.font = '10px Inter';
+      ctx.fillText('Риск (%)', padding.left + chartWidth / 2 - 25, padding.top + chartHeight + 22);
+      ctx.save();
+      ctx.translate(15, padding.top + chartHeight / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText('Доходность (%)', -25, 0);
+      ctx.restore();
+      
+      // Рисуем эффективную границу
+      if (frontier.length > 1) {
+        ctx.beginPath();
+        ctx.strokeStyle = '#3b82f6';
+        ctx.lineWidth = 2.5;
+        ctx.setLineDash([]);
+        for (let i = 0; i < frontier.length; i++) {
+          const x = toX(risks[i]);
+          const y = toY(returns[i]);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      
+      const pointSize = Math.max(2, Math.min(4, width / 120));
+      ctx.fillStyle = '#3b82f6';
+      for (let i = 0; i < frontier.length; i++) {
+        const x = toX(risks[i]);
+        const y = toY(returns[i]);
+        ctx.beginPath();
+        ctx.arc(x, y, pointSize, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      if (maxSharpe) {
+        const x = toX(maxSharpe.risk * 100);
+        const y = toY(maxSharpe.returns * 100);
+        const markerSize = Math.max(5, Math.min(8, width / 70));
+        ctx.fillStyle = '#10b981';
+        ctx.beginPath();
+        ctx.arc(x, y, markerSize, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(x, y, markerSize / 2, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      
+      if (minRisk) {
+        const x = toX(minRisk.risk * 100);
+        const y = toY(minRisk.returns * 100);
+        const markerSize = Math.max(5, Math.min(8, width / 70));
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(x, y, markerSize, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(x, y, markerSize / 2, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+    };
+    
+    // Отрисовка при монтировании и изменении размера окна
+    useEffect(() => {
+      drawChart();
+      window.addEventListener('resize', drawChart);
+      return () => window.removeEventListener('resize', drawChart);
+    }, [frontier, maxSharpe, minRisk]);
+    
+    // Перерисовка при изменении размера контейнера
+    useEffect(() => {
+      const resizeObserver = new ResizeObserver(() => drawChart());
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current);
+      }
+      return () => resizeObserver.disconnect();
+    }, [frontier, maxSharpe, minRisk]);
+    
+    return (
+      <div ref={containerRef} style={{ width: '100%', minHeight: '280px' }}>
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '280px', background: 'white', borderRadius: '12px' }}
+        />
+      </div>
+    );
+  };
+  
+  const PieChartComponent = ({ weights, assetsList, title }) => {
+    const canvasRef = useRef(null);
+    const containerRef = useRef(null);
+    const colors = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#06b6d4', '#ec4899', '#84cc16'];
+    
+    const drawChart = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container || !weights || weights.length === 0) return;
+      
+      const containerWidth = container.clientWidth;
+      const containerHeight = 250;
+      
+      canvas.width = containerWidth;
+      canvas.height = containerHeight;
+      
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      const centerX = width / 2;
+      const centerY = height / 2 - 15;
+      const radius = Math.min(width, height) / 2 - 40;
+      
+      ctx.clearRect(0, 0, width, height);
+      
+      let startAngle = -Math.PI / 2;
+      const total = weights.reduce((sum, w) => sum + w, 0);
+      
+      for (let i = 0; i < weights.length; i++) {
+        const angle = (weights[i] / total) * 2 * Math.PI;
+        const endAngle = startAngle + angle;
+        
+        ctx.beginPath();
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.moveTo(centerX, centerY);
+        ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+        ctx.fill();
+        
+        ctx.strokeStyle = 'white';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        
+        const midAngle = startAngle + angle / 2;
+        const textX = centerX + Math.cos(midAngle) * (radius * 0.65);
+        const textY = centerY + Math.sin(midAngle) * (radius * 0.65);
+        const percent = ((weights[i] / total) * 100).toFixed(1);
+        
+        if (parseFloat(percent) > 5 && width > 200) {
+          ctx.fillStyle = 'white';
+          ctx.font = `bold ${Math.max(9, Math.min(11, width / 35))}px Inter`;
+          ctx.shadowBlur = 0;
+          ctx.fillText(`${percent}%`, textX - 10, textY + 4);
+        }
+        
+        startAngle = endAngle;
+      }
+      
+      // Легенда внизу
+      let legendX = 10;
+      let legendY = height - 45;
+      for (let i = 0; i < Math.min(weights.length, 4); i++) {
+        ctx.fillStyle = colors[i % colors.length];
+        ctx.fillRect(legendX, legendY, 10, 10);
+        ctx.fillStyle = '#374151';
+        ctx.font = `${Math.max(8, Math.min(10, width / 45))}px Inter`;
+        ctx.fillText(`${assetsList[i]?.name || `A${i+1}`}`, legendX + 14, legendY + 9);
+        legendX += 65;
+        if (legendX > width - 65 && i < weights.length - 1) {
+          legendX = 10;
+          legendY += 16;
+        }
+      }
+    };
+    
+    useEffect(() => {
+      drawChart();
+      window.addEventListener('resize', drawChart);
+      return () => window.removeEventListener('resize', drawChart);
+    }, [weights, assetsList]);
+    
+    useEffect(() => {
+      const resizeObserver = new ResizeObserver(() => drawChart());
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current);
+      }
+      return () => resizeObserver.disconnect();
+    }, [weights, assetsList]);
+    
+    return (
+      <div ref={containerRef} style={{ width: '100%' }}>
+        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#1f2937', textAlign: 'center' }}>{title}</h3>
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '250px', background: 'white', borderRadius: '12px' }}
+        />
+      </div>
+    );
+  };
+  
+  const ComparisonChart = ({ maxSharpe, minRisk }) => {
+    const canvasRef = useRef(null);
+    const containerRef = useRef(null);
+    
+    const drawChart = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container || !maxSharpe || !minRisk) return;
+      
+      const containerWidth = container.clientWidth;
+      const containerHeight = 250;
+      
+      canvas.width = containerWidth;
+      canvas.height = containerHeight;
+      
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width;
+      const height = canvas.height;
+      
+      ctx.clearRect(0, 0, width, height);
+      
+      const categories = ['Доходность', 'Риск', 'Шарп'];
+      const maxSharpeValues = [
+        maxSharpe.returns * 100,
+        maxSharpe.risk * 100,
+        maxSharpe.sharpe * 1.5
+      ];
+      const minRiskValues = [
+        minRisk.returns * 100,
+        minRisk.risk * 100,
+        minRisk.sharpe * 1.5
+      ];
+      
+      const maxValue = Math.max(...maxSharpeValues, ...minRiskValues);
+      
+      // Адаптивная ширина столбцов
+      const categorySpacing = width / 4;
+      const barWidth = Math.min(35, categorySpacing * 0.3);
+      const startX = categorySpacing - barWidth;
+      
+      for (let i = 0; i < categories.length; i++) {
+        const x = startX + i * categorySpacing;
+        
+        const maxSharpeHeight = (maxSharpeValues[i] / maxValue) * 140;
+        ctx.fillStyle = '#10b981';
+        ctx.fillRect(x, height - 55 - maxSharpeHeight, barWidth, maxSharpeHeight);
+        
+        const minRiskHeight = (minRiskValues[i] / maxValue) * 140;
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillRect(x + barWidth + 5, height - 55 - minRiskHeight, barWidth, minRiskHeight);
+        
+        ctx.fillStyle = '#374151';
+        ctx.font = `${Math.max(9, Math.min(11, width / 45))}px Inter`;
+        ctx.fillText(categories[i], x + barWidth/2 - 12, height - 38);
+        
+        ctx.fillStyle = '#10b981';
+        ctx.font = `bold ${Math.max(8, Math.min(10, width / 50))}px Inter`;
+        ctx.fillText(maxSharpeValues[i].toFixed(1), x + barWidth/2 - 10, height - 57 - maxSharpeHeight);
+        
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillText(minRiskValues[i].toFixed(1), x + barWidth + 5 + barWidth/2 - 10, height - 57 - minRiskHeight);
+      }
+      
+      // Легенда
+      const legendX = width - 95;
+      ctx.fillStyle = '#10b981';
+      ctx.fillRect(legendX, 12, 12, 12);
+      ctx.fillStyle = '#374151';
+      ctx.font = `${Math.max(8, Math.min(10, width / 50))}px Inter`;
+      ctx.fillText('Макс. Шарп', legendX + 16, 22);
+      
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillRect(legendX, 32, 12, 12);
+      ctx.fillStyle = '#374151';
+      ctx.fillText('Мин. Риск', legendX + 16, 42);
+    };
+    
+    useEffect(() => {
+      drawChart();
+      window.addEventListener('resize', drawChart);
+      return () => window.removeEventListener('resize', drawChart);
+    }, [maxSharpe, minRisk]);
+    
+    useEffect(() => {
+      const resizeObserver = new ResizeObserver(() => drawChart());
+      if (containerRef.current) {
+        resizeObserver.observe(containerRef.current);
+      }
+      return () => resizeObserver.disconnect();
+    }, [maxSharpe, minRisk]);
+    
+    return (
+      <div ref={containerRef} style={{ width: '100%' }}>
+        <h3 style={{ fontSize: '14px', fontWeight: '600', marginBottom: '8px', color: '#1f2937', textAlign: 'center' }}>Сравнение портфелей</h3>
+        <canvas
+          ref={canvasRef}
+          style={{ width: '100%', height: '250px', background: 'white', borderRadius: '12px' }}
+        />
+      </div>
+    );
+  };
 
   const styles = {
     container: {
@@ -496,6 +859,36 @@ function App() {
             )}
           </div>
         </div>
+
+        {result && (
+          <div style={styles.chartsGrid}>
+            <div style={styles.chartCard}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', marginBottom: '8px' }}>
+                <h3 style={{ fontSize: '13px', fontWeight: '600', color: '#1f2937' }}>Эффективная граница</h3>
+              </div>
+              <EfficientFrontierChart 
+                frontier={result.efficient_frontier}
+                maxSharpe={result.max_sharpe}
+                minRisk={result.min_risk}
+              />
+            </div>
+            
+            <div style={styles.chartCard}>
+              <PieChartComponent 
+                weights={result.max_sharpe.weights}
+                assetsList={assets}
+                title="Распределение Максимального Шарпа"
+              />
+            </div>
+            
+            <div style={styles.chartCard}>
+              <ComparisonChart 
+                maxSharpe={result.max_sharpe}
+                minRisk={result.min_risk}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Подвал */}
         <div style = {styles.footer}>
