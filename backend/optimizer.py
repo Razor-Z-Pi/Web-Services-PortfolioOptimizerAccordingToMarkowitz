@@ -65,7 +65,7 @@ class MarkowitzOptimizer:
     def efficient_frontier(self, points=50):
         """Расчет эффективной границы Марковица"""
         frontiers = []
-        
+    
         # Находим диапазон доходностей между min_risk и max_return
         min_risk_port = self.optimize_min_risk()
         max_return_idx = np.argmax(self.returns)
@@ -75,12 +75,18 @@ class MarkowitzOptimizer:
         min_ret = min_risk_port['returns']
         max_ret = self.portfolio_performance(max_return_weights)[0]
         
+        print(f"DEBUG: min_ret={min_ret}, max_ret={max_ret}")  # Отладка
+        
+        # Если доходности одинаковые, возвращаем одну точку
+        if abs(max_ret - min_ret) < 0.0001:
+            return [{'risk': min_risk_port['risk'], 'returns': min_ret}]
+        
         target_returns = np.linspace(min_ret, max_ret, points)
         
         for target in target_returns:
             constraints = [
                 {'type': 'eq', 'fun': lambda x: np.sum(x) - 1},
-                {'type': 'eq', 'fun': lambda x: np.sum(x * self.returns) * 252 - target}
+                {'type': 'eq', 'fun': lambda x: np.sum(x * self.returns) - target}
             ]
             bounds = tuple((0, 1) for _ in range(self.n_assets))
             initial_guess = np.array([1/self.n_assets] * self.n_assets)
@@ -90,7 +96,8 @@ class MarkowitzOptimizer:
                 initial_guess,
                 method='SLSQP',
                 bounds=bounds,
-                constraints=constraints
+                constraints=constraints,
+                options={'maxiter': 1000}
             )
             
             if result.success:

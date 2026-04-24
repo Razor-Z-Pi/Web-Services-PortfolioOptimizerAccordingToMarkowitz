@@ -244,42 +244,51 @@ function App() {
   // Компонент графика эффективной границы
   const EfficientFrontierChart = ({ frontier, maxSharpe, minRisk }) => {
     const canvasRef = useRef(null);
-    const containerRef = useRef(null);
     
     // Функция отрисовки графика
     const drawChart = () => {
       const canvas = canvasRef.current;
-      const container = containerRef.current;
-      if (!canvas || !container || !frontier || frontier.length === 0) return;
-      
-      // Получаем реальные размеры контейнера
-      const containerWidth = container.clientWidth;
-      const containerHeight = 280; // Фиксированная высота
-      
-      // Устанавливаем размеры canvas
-      canvas.width = containerWidth;
-      canvas.height = containerHeight;
+      if (!canvas || !frontier || frontier.length === 0) {
+        console.log('No canvas or frontier data:', { canvas: !!canvas, frontierLength: frontier?.length });
+        return;
+      }
       
       const ctx = canvas.getContext('2d');
-      const width = canvas.width;
-      const height = canvas.height;
+      // ФИКСИРОВАННЫЙ РАЗМЕР (не адаптивный, чтобы гарантированно работало)
+      const width = 400;
+      const height = 280;
+      
+      canvas.width = width;
+      canvas.height = height;
       
       ctx.clearRect(0, 0, width, height);
       
+      // Если нет данных, рисуем сообщение
+      if (!frontier || frontier.length === 0) {
+        ctx.fillStyle = '#9ca3af';
+        ctx.font = '12px Inter';
+        ctx.fillText('Нет данных для отображения', width/2 - 80, height/2);
+        return;
+      }
+      
+      console.log('Drawing frontier, points:', frontier.length);
+      
       const risks = frontier.map(p => p.risk * 100);
       const returns = frontier.map(p => p.returns * 100);
-      const minRiskVal = Math.min(...risks, 0);
-      const maxRiskVal = Math.max(...risks, (maxSharpe?.risk * 100) || 0, (minRisk?.risk * 100) || 0);
-      const minReturnVal = Math.min(...returns, 0);
-      const maxReturnVal = Math.max(...returns, (maxSharpe?.returns * 100) || 0, (minRisk?.returns * 100) || 0);
       
-      // Адаптивные отступы в зависимости от ширины
-      const padding = { 
-        left: Math.max(35, width * 0.08), 
-        right: Math.max(15, width * 0.03), 
-        top: 20, 
-        bottom: 35 
-      };
+      // Проверка на валидность данных
+      if (risks.some(isNaN) || returns.some(isNaN)) {
+        console.error('Invalid frontier data:', frontier);
+        return;
+      }
+      
+      const minRiskVal = Math.min(...risks, 0);
+      const maxRiskVal = Math.max(...risks, (maxSharpe?.risk * 100) || 1, (minRisk?.risk * 100) || 1);
+      const minReturnVal = Math.min(...returns, 0);
+      const maxReturnVal = Math.max(...returns, (maxSharpe?.returns * 100) || 1, (minRisk?.returns * 100) || 1);
+      
+      // Отступы
+      const padding = { left: 45, right: 20, top: 20, bottom: 35 };
       const chartWidth = width - padding.left - padding.right;
       const chartHeight = height - padding.top - padding.bottom;
       
@@ -327,7 +336,6 @@ function App() {
         ctx.beginPath();
         ctx.strokeStyle = '#3b82f6';
         ctx.lineWidth = 2.5;
-        ctx.setLineDash([]);
         for (let i = 0; i < frontier.length; i++) {
           const x = toX(risks[i]);
           const y = toY(returns[i]);
@@ -337,66 +345,77 @@ function App() {
         ctx.stroke();
       }
       
-      const pointSize = Math.max(2, Math.min(4, width / 120));
+      // Точки границы
       ctx.fillStyle = '#3b82f6';
       for (let i = 0; i < frontier.length; i++) {
         const x = toX(risks[i]);
         const y = toY(returns[i]);
         ctx.beginPath();
-        ctx.arc(x, y, pointSize, 0, 2 * Math.PI);
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
         ctx.fill();
       }
       
-      if (maxSharpe) {
+      // Max Sharpe точка
+      if (maxSharpe && maxSharpe.risk && maxSharpe.returns) {
         const x = toX(maxSharpe.risk * 100);
         const y = toY(maxSharpe.returns * 100);
-        const markerSize = Math.max(5, Math.min(8, width / 70));
         ctx.fillStyle = '#10b981';
         ctx.beginPath();
-        ctx.arc(x, y, markerSize, 0, 2 * Math.PI);
+        ctx.arc(x, y, 7, 0, 2 * Math.PI);
         ctx.fill();
         ctx.fillStyle = 'white';
         ctx.beginPath();
-        ctx.arc(x, y, markerSize / 2, 0, 2 * Math.PI);
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
         ctx.fill();
+        
+        // Подпись
+        ctx.fillStyle = '#065f46';
+        ctx.font = 'bold 10px Inter';
+        ctx.fillText('Max Sharpe', x + 8, y - 5);
       }
       
-      if (minRisk) {
+      // Min Risk точка
+      if (minRisk && minRisk.risk && minRisk.returns) {
         const x = toX(minRisk.risk * 100);
         const y = toY(minRisk.returns * 100);
-        const markerSize = Math.max(5, Math.min(8, width / 70));
         ctx.fillStyle = '#f59e0b';
         ctx.beginPath();
-        ctx.arc(x, y, markerSize, 0, 2 * Math.PI);
+        ctx.arc(x, y, 7, 0, 2 * Math.PI);
         ctx.fill();
         ctx.fillStyle = 'white';
         ctx.beginPath();
-        ctx.arc(x, y, markerSize / 2, 0, 2 * Math.PI);
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
         ctx.fill();
+        
+        // Подпись
+        ctx.fillStyle = '#92400e';
+        ctx.font = 'bold 10px Inter';
+        ctx.fillText('Min Risk', x + 8, y - 5);
       }
     };
     
-    // Отрисовка при монтировании и изменении размера окна
+    // Отрисовка при монтировании и изменении данных
     useEffect(() => {
       drawChart();
-      window.addEventListener('resize', drawChart);
-      return () => window.removeEventListener('resize', drawChart);
     }, [frontier, maxSharpe, minRisk]);
     
-    // Перерисовка при изменении размера контейнера
+    // Для отладки - выводим данные в консоль
     useEffect(() => {
-      const resizeObserver = new ResizeObserver(() => drawChart());
-      if (containerRef.current) {
-        resizeObserver.observe(containerRef.current);
-      }
-      return () => resizeObserver.disconnect();
+      console.log('Frontier data received:', {
+        frontierLength: frontier?.length,
+        frontier: frontier?.slice(0, 3),
+        maxSharpe: maxSharpe,
+        minRisk: minRisk
+      });
     }, [frontier, maxSharpe, minRisk]);
     
     return (
-      <div ref={containerRef} style={{ width: '100%', minHeight: '280px' }}>
+      <div style={{ width: '100%', minHeight: '280px' }}>
         <canvas
           ref={canvasRef}
-          style={{ width: '100%', height: '280px', background: 'white', borderRadius: '12px' }}
+          width={400}
+          height={280}
+          style={{ width: '100%', height: 'auto', background: 'white', borderRadius: '12px' }}
         />
       </div>
     );
