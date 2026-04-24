@@ -3,18 +3,14 @@ from scipy.optimize import minimize
 
 class MarkowitzOptimizer:
     def __init__(self, expected_returns, cov_matrix):
-        """
-        expected_returns: list или np.array ожидаемых доходностей
-        cov_matrix: матрица ковариации 2D
-        """
-        self.returns = np.array(expected_returns)
-        self.cov = np.array(cov_matrix)
+        self.returns = np.array(expected_returns)  # Ожидаемая годовая доходность
+        self.cov = np.array(cov_matrix)  # Годовая ковариация
         self.n_assets = len(expected_returns)
     
     def portfolio_performance(self, weights):
         """Рассчет доходности и риска портфеля"""
-        returns = np.sum(self.returns * weights) * 252  # годовая доходность
-        risk = np.sqrt(np.dot(weights.T, np.dot(self.cov * 252, weights)))  # годовой риск
+        returns = np.sum(self.returns * weights)  # Годовая доходность
+        risk = np.sqrt(np.dot(weights.T, np.dot(self.cov, weights)))  # Годовой риск
         return returns, risk
     
     def negative_sharpe(self, weights):

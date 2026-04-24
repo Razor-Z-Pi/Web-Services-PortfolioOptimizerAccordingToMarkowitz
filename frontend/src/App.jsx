@@ -10,6 +10,137 @@ function App() {
   ]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [testResults, setTestResults] = useState(null);
+  const [showTests, setShowTests] = useState(false);
+
+  const runTest1 = async () => {
+    // Тестовые данные: 2 актива
+    // Актив A: доходность 10%, риск 10%
+    // Актив B: доходность 20%, риск 20%
+    // Корреляция 0.3
+    const testAssets = [
+      { name: 'Пример A (Минимальные риски)', ret: 0.10, risk: 0.10 },
+      { name: 'Пример B (Высокий возрат)', ret: 0.20, risk: 0.20 }
+    ];
+    
+    const covMatrix = [
+      [0.10 * 0.10, 0.3 * 0.10 * 0.20],
+      [0.3 * 0.10 * 0.20, 0.20 * 0.20]
+    ];
+    
+    const expectedReturns = testAssets.map(a => a.ret);
+    
+    try {
+      const data = await optimizePortfolio(expectedReturns, covMatrix, testAssets.map(a => a.name));
+      
+      // Ожидаемые результаты (приблизительные):
+      // Минимальные риски: ~80% в A, 20% в B (веса: [0.8, 0.2])
+      // Максимальный шарп: ~60% в B, 40% в A (веса: [0.4, 0.6])
+      
+      const minRiskWeights = data.min_risk.weights;
+      const maxSharpeWeights = data.max_sharpe.weights;
+      
+      const minRiskCorrect = Math.abs(minRiskWeights[0] - 0.8) < 0.15 && Math.abs(minRiskWeights[1] - 0.2) < 0.15;
+      const maxSharpeCorrect = Math.abs(maxSharpeWeights[0] - 0.4) < 0.2 && Math.abs(maxSharpeWeights[1] - 0.6) < 0.2;
+      
+      return {
+        name: 'Тест 1: 2 актива (10%/10% vs 20%/20%, corr=0.3)',
+        passed: minRiskCorrect && maxSharpeCorrect,
+        details: {
+          minRisk: `Веса: A = ${minRiskWeights[0].toFixed(3)}, B = ${minRiskWeights[1].toFixed(3)} (ожидалось ~0.8, 0.2)`,
+          maxSharpe: `Веса: A = ${maxSharpeWeights[0].toFixed(3)}, B = ${maxSharpeWeights[1].toFixed(3)} (ожидалось ~0.4, 0.6)`,
+          minRiskReturn: `${(data.min_risk.returns * 100).toFixed(2)}%`,
+          maxSharpeReturn: `${(data.max_sharpe.returns * 100).toFixed(2)}%`
+        }
+      };
+    } catch (error) {
+      return { name: 'Тест 1', passed: false, details: { error: error.message } };
+    }
+  };
+
+  const runTest2 = async () => {
+    const testAssets = [
+      { name: 'Equal A', ret: 0.12, risk: 0.15 },
+      { name: 'Equal B', ret: 0.12, risk: 0.15 },
+      { name: 'Equal C', ret: 0.12, risk: 0.15 }
+    ];
+    
+    // Все активы идентичны, корреляция 1 (идеальная)
+    const covMatrix = [
+      [0.15 * 0.15, 1 * 0.15 * 0.15, 1 * 0.15 * 0.15],
+      [1 * 0.15 * 0.15, 0.15 * 0.15, 1 * 0.15 * 0.15],
+      [1 * 0.15 * 0.15, 1 * 0.15 * 0.15, 0.15 * 0.15]
+    ];
+    
+    const expectedReturns = testAssets.map(a => a.ret);
+    
+    try {
+      const data = await optimizePortfolio(expectedReturns, covMatrix, testAssets.map(a => a.name));
+      
+      // Ожидаем равные веса: [0.333, 0.333, 0.333]
+      const weights = data.max_sharpe.weights;
+      const allEqual = weights.every(w => Math.abs(w - 1/3) < 0.05);
+      
+      return {
+        name: 'Тест 2: 3 одинаковых актива (должны быть равные веса)',
+        passed: allEqual,
+        details: {
+          weights: `Веса: ${weights.map(w => w.toFixed(3)).join(', ')} (ожидалось 0.333 каждый)`,
+          returns: `${(data.max_sharpe.returns * 100).toFixed(2)}%`,
+          risk: `${(data.max_sharpe.risk * 100).toFixed(2)}%`
+        }
+      };
+    } catch (error) {
+      return { name: 'Тест 2', passed: false, details: { error: error.message } };
+    }
+  };
+  
+  const runTest3 = async () => {
+    const testAssets = [
+      { name: 'Плохой пример', ret: 0.05, risk: 0.30 },
+      { name: 'Хороший пример', ret: 0.25, risk: 0.15 },
+      { name: 'Средний пример', ret: 0.12, risk: 0.20 }
+    ];
+    
+    // Корреляция 0.5 между всеми
+    const covMatrix = [
+      [0.30 * 0.30, 0.5 * 0.30 * 0.15, 0.5 * 0.30 * 0.20],
+      [0.5 * 0.30 * 0.15, 0.15 * 0.15, 0.5 * 0.15 * 0.20],
+      [0.5 * 0.30 * 0.20, 0.5 * 0.15 * 0.20, 0.20 * 0.20]
+    ];
+    
+    const expectedReturns = testAssets.map(a => a.ret);
+    
+    try {
+      const data = await optimizePortfolio(expectedReturns, covMatrix, testAssets.map(a => a.name));
+      
+      const weights = data.max_sharpe.weights;
+      const bestWeight = weights[1];
+      const correct = bestWeight > 0.5;
+      
+      return {
+        name: 'Тест 3: Актив с лучшим соотношением риск/доходность',
+        passed: correct,
+        details: {
+          weights: `Веса: ${weights.map((w, i) => `${testAssets[i].name}: ${(w * 100).toFixed(1)}%`).join(', ')}`,
+          bestWeight: `Лучший актив (${testAssets[1].name}): ${(bestWeight * 100).toFixed(1)}% (ожидалось >50%)`
+        }
+      };
+    } catch (error) {
+      return { name: 'Тест 3', passed: false, details: { error: error.message } };
+    }
+  };
+  
+  // Запуск всех тестов
+  const runAllTests = async () => {
+    setTestResults({ running: true });
+    const results = await Promise.all([
+      runTest1(),
+      runTest2(),
+      runTest3()
+    ]);
+    setTestResults({ running: false, results });
+  };
 
   const generateCovMatrix = () => {
     const n = assets.length;
@@ -22,28 +153,77 @@ function App() {
     }
     return cov;
   };
-
+  
   const handleOptimize = async () => {
     setLoading(true);
-    setTimeout(async () => {
-      try {
-        const expectedReturns = assets.map(a => a.ret);
-        const covMatrix = generateCovMatrix();
-        const assetNames = assets.map(a => a.name);
-
-        const data = await optimizePortfolio(expectedReturns, covMatrix, assetNames);
-        setResult(data);
-      } catch (error) {
-        alert('Ошибка оптимизации: ' + error.message);
-      } finally {
-        setLoading(false);
-      }
-    }, 800);
+    try {
+      const expectedReturns = assets.map(a => a.ret);
+      const covMatrix = generateCovMatrix();
+      const assetNames = assets.map(a => a.name);
+      
+      const data = await optimizePortfolio(expectedReturns, covMatrix, assetNames);
+      console.log('Optimization result:', data);
+      setResult(data);
+    } catch (error) {
+      console.error('Optimization error:', error);
+      alert('Ошибка оптимизации: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const examples = {
+    conservative: {
+      name: 'Консервативный портфель',
+      assets: [
+        { name: 'Облигации РФ', ret: 0.08, risk: 0.08 },
+        { name: 'Корп. облигации', ret: 0.10, risk: 0.12 },
+        { name: 'Дивиденд. акции', ret: 0.12, risk: 0.18 },
+        { name: 'Недвижимость', ret: 0.09, risk: 0.14 }
+      ]
+    },
+    balanced: {
+      name: 'Сбалансированный портфель',
+      assets: [
+        { name: 'Акции США', ret: 0.10, risk: 0.15 },
+        { name: 'Акции EU', ret: 0.09, risk: 0.14 },
+        { name: 'Акции Asia', ret: 0.12, risk: 0.18 },
+        { name: 'Золото', ret: 0.06, risk: 0.12 },
+        { name: 'Облигации', ret: 0.05, risk: 0.06 }
+      ]
+    },
+    aggressive: {
+      name: 'Агрессивный портфель',
+      assets: [
+        { name: 'Tech акции', ret: 0.20, risk: 0.30 },
+        { name: 'Криптовалюты', ret: 0.35, risk: 0.55 },
+        { name: 'Акции роста', ret: 0.25, risk: 0.35 },
+        { name: 'Венчур', ret: 0.40, risk: 0.60 }
+      ]
+    },
+    tech: {
+      name: 'Технологический сектор',
+      assets: [
+        { name: 'AAPL', ret: 0.15, risk: 0.25 },
+        { name: 'MSFT', ret: 0.14, risk: 0.22 },
+        { name: 'GOOGL', ret: 0.13, risk: 0.24 },
+        { name: 'NVDA', ret: 0.22, risk: 0.38 },
+        { name: 'META', ret: 0.18, risk: 0.32 }
+      ]
+    }
+  };
+  
+  const loadExample = (exampleKey) => {
+    const example = examples[exampleKey];
+    if (example) {
+      setAssets(example.assets);
+      setResult(null);
+    }
   };
 
   const addAsset = () => {
     if (assets.length < 8) {
-      setAssets([...assets, { name: `Asset ${assets.length + 1}`, ret: 0.10, risk: 0.18 }]);
+      setAssets([...assets, { name: `Пусто ${assets.length + 1}`, ret: 0.10, risk: 0.18 }]);
     }
   };
 
@@ -530,6 +710,36 @@ function App() {
       fontSize: '14px',
       fontWeight: '500',
     },
+    testButton: {
+      background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+      color: 'white',
+      border: 'none',
+      padding: '8px 16px',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+      fontSize: '14px',
+      fontWeight: '500',
+    },
+    exampleButtons: {
+      display: 'flex',
+      gap: '8px',
+      flexWrap: 'wrap',
+      marginTop: '12px',
+    },
+    exampleButton: {
+      background: '#f3f4f6',
+      color: '#374151',
+      border: '1px solid #e5e7eb',
+      padding: '6px 12px',
+      borderRadius: '8px',
+      cursor: 'pointer',
+      fontSize: '12px',
+      fontWeight: '500',
+      transition: 'all 0.2s',
+    },
     assetItem: {
       background: '#f9fafb',
       borderRadius: '12px',
@@ -652,10 +862,43 @@ function App() {
       maxHeight: '450px',
       overflowY: 'auto',
     },
+ chartsGrid: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3, 1fr)',
+      gap: '16px',
+      marginTop: '20px',
+    },
+    chartCard: {
+      background: 'white',
+      borderRadius: '12px',
+      padding: '12px',
+      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+      border: '1px solid #f3f4f6',
+    },
     scrollArea: {
       maxHeight: '450px',
       overflowY: 'auto',
-    }
+    },
+    testPanel: {
+      background: 'white',
+      borderRadius: '16px',
+      padding: '20px',
+      marginBottom: '20px',
+      boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+      border: '1px solid #e5e7eb',
+    },
+    testPassed: {
+      color: '#059669',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+    },
+    testFailed: {
+      color: '#dc2626',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+    },
   };
 
   return (
@@ -718,6 +961,13 @@ function App() {
               <button onClick = {addAsset} disabled={assets.length >= 8} style = {styles.addButton}>
                 <Plus size = {16} /> Добавить актив
               </button>
+            </div>
+
+            <div style={styles.exampleButtons}>
+              <button onClick={() => loadExample('conservative')} style={styles.exampleButton}>Консервативный</button>
+              <button onClick={() => loadExample('balanced')} style={styles.exampleButton}>Сбалансированный</button>
+              <button onClick={() => loadExample('aggressive')} style={styles.exampleButton}>Агрессивный</button>
+              <button onClick={() => loadExample('tech')} style={styles.exampleButton}>Технологический</button>
             </div>
 
             <div style = {styles.scrollArea}>

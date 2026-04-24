@@ -10,10 +10,10 @@ app = FastAPI(title="Markowitz Portfolio Optimizer")
 # CORS для фронтенда
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins = ["http://localhost:5173", "http://localhost:3000"],
+    allow_credentials = True,
+    allow_methods = ["*"],
+    allow_headers = ["*"],
 )
 
 class PortfolioInput(BaseModel):
@@ -26,14 +26,17 @@ class OptimizationResponse(BaseModel):
     min_risk: dict
     efficient_frontier: List[dict]
 
-@app.post("/optimize", response_model=OptimizationResponse)
+@app.post("/optimize", response_model = OptimizationResponse)
 async def optimize_portfolio(data: PortfolioInput):
     """Оптимизация портфеля по Марковицу"""
     try:
         # Валидация
         if len(data.expected_returns) != len(data.cov_matrix):
-            raise HTTPException(status_code=400, detail="Размерность матриц не совпадает")
+            raise HTTPException(status_code = 400, detail = "Размерность матриц не совпадает")
         
+        print(f"(годовые): {data.expected_returns}")
+        print(f"(годовая): {data.cov_matrix[0] if data.cov_matrix else 'empty'}")
+
         # Оптимизатор
         optimizer = MarkowitzOptimizer(
             data.expected_returns,
@@ -43,7 +46,7 @@ async def optimize_portfolio(data: PortfolioInput):
         # Оптимизации
         max_sharpe = optimizer.optimize_max_sharpe()
         min_risk = optimizer.optimize_min_risk()
-        frontier = optimizer.efficient_frontier(points=30)
+        frontier = optimizer.efficient_frontier(points = 30)
         
         # Добавляем имена активов если есть
         if data.asset_names:
@@ -57,7 +60,7 @@ async def optimize_portfolio(data: PortfolioInput):
         )
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code = 500, detail = str(e))
 
 @app.get("/health")
 async def health_check():
@@ -65,4 +68,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host = "0.0.0.0", port = 8000)
